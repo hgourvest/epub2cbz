@@ -503,6 +503,8 @@ func extractImagesFromXHTML(html string, pageHref string, srcs []string) []strin
 					if attr.Name.Local == "src" {
 						// Convert relative path to absolute path
 						imgPath := filepath.Join(filepath.Dir(pageHref), attr.Value)
+						// Normalize path separators to forward slashes for ZIP/EPUB compatibility
+						imgPath = filepath.ToSlash(imgPath)
 						imgPath = strings.TrimPrefix(imgPath, "/")
 						srcs = append(srcs, imgPath)
 						break
