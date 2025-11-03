@@ -402,7 +402,12 @@ func processFile(epubPath string, outputPath string) {
 			for _, ref := range pkg.Spine.Itemrefs {
 				href, exists := pageMap[ref.IDRef]
 				if exists {
-					pages = append(pages, href)
+					// Convert relative path to absolute path based on volOPFPath
+					absPath := filepath.Join(filepath.Dir(volOPFPath), href)
+					// Normalize path separators to forward slashes for ZIP/EPUB compatibility
+					absPath = filepath.ToSlash(absPath)
+					absPath = strings.TrimPrefix(absPath, "/")
+					pages = append(pages, absPath)
 				}
 			}
 			break
