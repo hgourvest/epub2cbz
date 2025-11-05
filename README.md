@@ -50,7 +50,7 @@ To build from source:
 ## Options
 
 - `-r` (boolean): Process subdirectories recursively. Default is `false`.
-- `-j`, `--jobs` (integer): Number of parallel jobs to run. Defaults to the number of CPU cores.
+- `-j` (integer): Number of parallel jobs to run. Defaults to the number of CPU cores.
 
 ## Examples
 

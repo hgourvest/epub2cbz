@@ -225,7 +225,6 @@ func main() {
 	flag.BoolVar(&recursive, "r", false, "process subdirectories recursively")
 	flag.BoolVar(&showVersion, "v", false, "show version information")
 	flag.IntVar(&jobs, "j", runtime.NumCPU(), "number of parallel jobs (default: number of CPU cores)")
-	flag.IntVar(&jobs, "jobs", runtime.NumCPU(), "number of parallel jobs (default: number of CPU cores)") // Long flag
 	flag.Parse()
 
 	if showVersion {
