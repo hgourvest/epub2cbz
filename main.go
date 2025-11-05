@@ -439,10 +439,9 @@ func processFile(epubPath string, outputPath string) {
 					log.Printf("Error opening %s: %v", pageHref, err)
 					continue
 				}
-				defer file.Close()
-
 				// Read the content of the page
 				content, err := io.ReadAll(file)
+				file.Close() // Close the file immediately after reading
 				if err != nil {
 					log.Printf("Error reading %s: %v", pageHref, err)
 					continue
