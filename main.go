@@ -9,9 +9,11 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 	"runtime/debug"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 type Container struct {
@@ -248,7 +250,9 @@ func main() {
 		processDirectory(sourcePath, outputPath, recursive)
 	} else {
 		// Process single .epub file
-		processFile(sourcePath, outputPath)
+		if err := processFile(sourcePath, outputPath); err != nil {
+			log.Fatal(err)
+		}
 	}
 }
 
@@ -298,45 +302,64 @@ func processDirectory(sourceDir string, outputDir string, recursive bool) {
 		}
 	}
 
+	var wg sync.WaitGroup
+	// Limit the number of goroutines to the number of available CPUs
+	maxConcurrency := runtime.NumCPU()
+	semaphore := make(chan struct{}, maxConcurrency)
+
 	// Process each .epub file
 	for _, epubPath := range epubFiles {
-		fmt.Printf("Processing %s...\n", epubPath)
-		if outputDir != "" {
-			// Generate output path preserving directory structure if recursive
-			var outputPath string
-			if recursive {
-				relPath, err := filepath.Rel(sourceDir, epubPath)
-				if err != nil {
-					log.Printf("Error getting relative path for %s: %v", epubPath, err)
-					continue
+		wg.Add(1)
+		semaphore <- struct{}{}
+
+		go func(path string) {
+			defer wg.Done()
+			defer func() { <-semaphore }()
+
+			fmt.Printf("Processing %s...\n", path)
+
+			var finalOutputPath string
+			if outputDir != "" {
+				// Generate output path preserving directory structure if recursive
+				if recursive {
+					relPath, err := filepath.Rel(sourceDir, path)
+					if err != nil {
+						log.Printf("Error getting relative path for %s: %v", path, err)
+						return
+					}
+					// Create corresponding output directory structure
+					outputDirPath := filepath.Join(outputDir, filepath.Dir(relPath))
+					err = os.MkdirAll(outputDirPath, 0755)
+					if err != nil {
+						log.Printf("Error creating output directory structure for %s: %v", path, err)
+						return
+					}
+					// Generate output path in the output directory
+					baseName := strings.TrimSuffix(filepath.Base(path), ".epub")
+					finalOutputPath = filepath.Join(outputDirPath, baseName+".cbz")
+				} else {
+					// Just put output in the output directory without subdirectory structure
+					baseName := strings.TrimSuffix(filepath.Base(path), ".epub")
+					finalOutputPath = filepath.Join(outputDir, baseName+".cbz")
 				}
-				// Create corresponding output directory structure
-				outputDirPath := filepath.Join(outputDir, filepath.Dir(relPath))
-				err = os.MkdirAll(outputDirPath, 0755)
-				if err != nil {
-					log.Printf("Error creating output directory structure for %s: %v", epubPath, err)
-					continue
-				}
-				// Generate output path in the output directory
-				baseName := strings.TrimSuffix(filepath.Base(epubPath), ".epub")
-				outputPath = filepath.Join(outputDirPath, baseName+".cbz")
 			} else {
-				// Just put output in the output directory without subdirectory structure
-				baseName := strings.TrimSuffix(filepath.Base(epubPath), ".epub")
-				outputPath = filepath.Join(outputDir, baseName+".cbz")
+				// Use default naming in source directory
+				finalOutputPath = ""
 			}
-			processFile(epubPath, outputPath)
-		} else {
-			// Use default naming in source directory
-			processFile(epubPath, "")
-		}
+
+			if err := processFile(path, finalOutputPath); err != nil {
+				log.Printf("ERROR processing %s: %v", path, err)
+			}
+		}(epubPath)
 	}
+
+	wg.Wait()
 }
 
-func processFile(epubPath string, outputPath string) {
+func processFile(epubPath string, outputPath string) error {
 	// Validate input file
 	if filepath.Ext(epubPath) != ".epub" {
-		log.Fatal("Input file must have .epub extension")
+		return fmt.Errorf("input file must have .epub extension")
 	}
 
 	// Generate output path if not provided
@@ -347,7 +370,7 @@ func processFile(epubPath string, outputPath string) {
 	// Open the EPUB file
 	zipReader, err := zip.OpenReader(epubPath)
 	if err != nil {
-		log.Fatal("Error opening EPUB file:", err)
+		return fmt.Errorf("error opening EPUB file: %w", err)
 	}
 	defer zipReader.Close()
 
@@ -357,13 +380,13 @@ func processFile(epubPath string, outputPath string) {
 		if f.Name == "META-INF/container.xml" {
 			file, err := f.Open()
 			if err != nil {
-				log.Fatal("Error opening container.xml:", err)
+				return fmt.Errorf("error opening container.xml: %w", err)
 			}
 			defer file.Close()
 
 			var container Container
 			if err := xml.NewDecoder(file).Decode(&container); err != nil {
-				log.Fatal("Error decoding container.xml:", err)
+				return fmt.Errorf("error decoding container.xml: %w", err)
 			}
 			volOPFPath = container.Rootfiles.Rootfile.FullPath
 			break
@@ -371,7 +394,7 @@ func processFile(epubPath string, outputPath string) {
 	}
 
 	if volOPFPath == "" {
-		log.Fatal("vol.opf file not found in container.")
+		return fmt.Errorf("vol.opf file not found in container")
 	}
 
 	// 2. Read vol.opf to get the metadata and pages
@@ -381,13 +404,13 @@ func processFile(epubPath string, outputPath string) {
 		if f.Name == volOPFPath {
 			file, err := f.Open()
 			if err != nil {
-				log.Fatal("Error opening vol.opf:", err)
+				return fmt.Errorf("error opening vol.opf: %w", err)
 			}
 			defer file.Close()
 
 			var pkg Package
 			if err := xml.NewDecoder(file).Decode(&pkg); err != nil {
-				log.Fatal("Error decoding vol.opf:", err)
+				return fmt.Errorf("error decoding vol.opf: %w", err)
 			}
 
 			// Store the metadata for later use
@@ -415,13 +438,13 @@ func processFile(epubPath string, outputPath string) {
 	}
 
 	if len(pages) == 0 {
-		log.Fatal("No pages found in spine.")
+		return fmt.Errorf("no pages found in spine")
 	}
 
 	// 3. Open each page and extract images
 	zipWriter, err := os.Create(outputPath)
 	if err != nil {
-		log.Fatal("Error creating ZIP file:", err)
+		return fmt.Errorf("error creating ZIP file: %w", err)
 	}
 	defer zipWriter.Close()
 
@@ -483,6 +506,7 @@ func processFile(epubPath string, outputPath string) {
 	}
 
 	fmt.Printf("Images extracted to %s\n", outputPath)
+	return nil
 }
 
 // extractImagesFromHTML extracts image paths from HTML content using XML parser
