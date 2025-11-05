@@ -34,12 +34,12 @@ To build from source:
 
 ### Convert a single EPUB file
 ```bash
-./epub2cbz <input.epub> [output.cbz]
+./epub2cbz [-j <num>] <input.epub> [output.cbz]
 ```
 
 ### Convert all EPUB files in a directory and subdirectories (recursive)
 ```bash
-./epub2cbz -r <input_directory> [output_directory]
+./epub2cbz -r [-j <num>] <input_directory> [output_directory]
 ```
 
 ### Convert only EPUB files in a specific directory (non-recursive, default behavior)
@@ -50,6 +50,7 @@ To build from source:
 ## Options
 
 - `-r` (boolean): Process subdirectories recursively. Default is `false`.
+- `-j`, `--jobs` (integer): Number of parallel jobs to run. Defaults to the number of CPU cores.
 
 ## Examples
 
@@ -69,7 +70,12 @@ To build from source:
    ./epub2cbz -r /path/to/epubs /path/to/output
    ```
 
-4. Convert only EPUB files in the top directory (not subdirectories, default):
+4. Convert all EPUB files in a directory using 4 parallel jobs:
+   ```bash
+   ./epub2cbz -r -j 4 /path/to/epubs /path/to/output
+   ```
+
+5. Convert only EPUB files in the top directory (not subdirectories, default):
    ```bash
    ./epub2cbz /path/to/epubs /path/to/output
    ```
