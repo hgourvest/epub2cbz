@@ -221,11 +221,26 @@ func getVersion() string {
 func main() {
 	var recursive bool
 	var showVersion bool
+	var showHelp bool
 	var jobs int
+
 	flag.BoolVar(&recursive, "r", false, "process subdirectories recursively")
 	flag.BoolVar(&showVersion, "v", false, "show version information")
+	flag.BoolVar(&showHelp, "h", false, "show help message")
 	flag.IntVar(&jobs, "j", runtime.NumCPU(), "number of parallel jobs (default: number of CPU cores)")
+
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: %s [-r] [-v] [-h] [-j <num>] <epub_file.epub | source_dir> [output_dir]\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "\nOptions:\n")
+		flag.PrintDefaults()
+	}
+
 	flag.Parse()
+
+	if showHelp {
+		flag.Usage()
+		return
+	}
 
 	if showVersion {
 		version := getVersion()
@@ -238,7 +253,8 @@ func main() {
 	}
 
 	if len(flag.Args()) < 1 {
-		log.Fatal("Usage: epub2cbz [-r] [-v] [-j <num>] <epub_file.epub | source_dir> [output_dir]")
+		flag.Usage()
+		return
 	}
 
 	sourcePath := flag.Arg(0)

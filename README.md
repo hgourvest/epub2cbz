@@ -34,22 +34,24 @@ To build from source:
 
 ### Convert a single EPUB file
 ```bash
-./epub2cbz [-j <num>] <input.epub> [output.cbz]
+./epub2cbz [-r] [-v] [-h] [-j <num>] <input.epub> [output.cbz]
 ```
 
 ### Convert all EPUB files in a directory and subdirectories (recursive)
 ```bash
-./epub2cbz -r [-j <num>] <input_directory> [output_directory]
+./epub2cbz -r [-v] [-h] [-j <num>] <input_directory> [output_directory]
 ```
 
 ### Convert only EPUB files in a specific directory (non-recursive, default behavior)
 ```bash
-./epub2cbz <input_directory> [output_directory]
+./epub2cbz [-v] [-h] [-j <num>] <input_directory> [output_directory]
 ```
 
 ## Options
 
 - `-r` (boolean): Process subdirectories recursively. Default is `false`.
+- `-v` (boolean): Show version information.
+- `-h` (boolean): Show help message.
 - `-j` (integer): Number of parallel jobs to run. Defaults to the number of CPU cores.
 
 ## Examples
