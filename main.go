@@ -14,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
+	"golang.org/x/net/html"
 )
 
 type Container struct {
@@ -510,38 +512,31 @@ func processFile(epubPath string, outputPath string) error {
 }
 
 // extractImagesFromHTML extracts image paths from HTML content using XML parser
-func extractImagesFromXHTML(html string, pageHref string, srcs []string) []string {
-	// Create an XML decoder
-	decoder := xml.NewDecoder(strings.NewReader(html))
+func extractImagesFromXHTML(htmlContent string, pageHref string, srcs []string) []string {
+	doc, err := html.Parse(strings.NewReader(htmlContent))
+	if err != nil {
+		log.Printf("Error parsing HTML from %s: %v", pageHref, err)
+		return srcs
+	}
 
-	// Traverse XML tokens
-	for {
-		token, err := decoder.Token()
-		if err != nil {
-			break
-		}
-
-		// Check if it's a start element
-		if se, ok := token.(xml.StartElement); ok {
-			// Check if it's an <img> tag
-			if se.Name.Local == "img" {
-				// Traverse attributes of the <img> tag
-				for _, attr := range se.Attr {
-					// Check if the attribute is "src"
-					if attr.Name.Local == "src" {
-						// Convert relative path to absolute path
-						imgPath := filepath.Join(filepath.Dir(pageHref), attr.Value)
-						// Normalize path separators to forward slashes for ZIP/EPUB compatibility
-						imgPath = filepath.ToSlash(imgPath)
-						imgPath = strings.TrimPrefix(imgPath, "/")
-						srcs = append(srcs, imgPath)
-						break
-					}
+	var f func(*html.Node)
+	f = func(n *html.Node) {
+		if n.Type == html.ElementNode && n.Data == "img" {
+			for _, a := range n.Attr {
+				if a.Key == "src" {
+					imgPath := filepath.Join(filepath.Dir(pageHref), a.Val)
+					imgPath = filepath.ToSlash(imgPath)
+					imgPath = strings.TrimPrefix(imgPath, "/")
+					srcs = append(srcs, imgPath)
+					break
 				}
 			}
 		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			f(c)
+		}
 	}
-
+	f(doc)
 	return srcs
 }
 
