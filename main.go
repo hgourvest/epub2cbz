@@ -358,6 +358,16 @@ func processDirectory(sourceDir string, outputDir string, recursive bool) {
 	wg.Wait()
 }
 
+// findAndOpenFile searches for a file by name in the zip archive and returns an open reader.
+func findAndOpenFile(zipReader *zip.ReadCloser, fileName string) (io.ReadCloser, error) {
+	for _, f := range zipReader.File {
+		if f.Name == fileName {
+			return f.Open()
+		}
+	}
+	return nil, fmt.Errorf("file not found in archive: %s", fileName)
+}
+
 func processFile(epubPath string, outputPath string) error {
 	// Validate input file
 	if filepath.Ext(epubPath) != ".epub" {
@@ -378,22 +388,17 @@ func processFile(epubPath string, outputPath string) error {
 
 	// 1. Find the vol.opf file
 	var volOPFPath string
-	for _, f := range zipReader.File {
-		if f.Name == "META-INF/container.xml" {
-			file, err := f.Open()
-			if err != nil {
-				return fmt.Errorf("error opening container.xml: %w", err)
-			}
-			defer file.Close()
-
-			var container Container
-			if err := xml.NewDecoder(file).Decode(&container); err != nil {
-				return fmt.Errorf("error decoding container.xml: %w", err)
-			}
-			volOPFPath = container.Rootfiles.Rootfile.FullPath
-			break
-		}
+	containerFile, err := findAndOpenFile(zipReader, "META-INF/container.xml")
+	if err != nil {
+		return fmt.Errorf("error finding container.xml: %w", err)
 	}
+	defer containerFile.Close()
+
+	var container Container
+	if err := xml.NewDecoder(containerFile).Decode(&container); err != nil {
+		return fmt.Errorf("error decoding container.xml: %w", err)
+	}
+	volOPFPath = container.Rootfiles.Rootfile.FullPath
 
 	if volOPFPath == "" {
 		return fmt.Errorf("vol.opf file not found in container")
@@ -402,40 +407,35 @@ func processFile(epubPath string, outputPath string) error {
 	// 2. Read vol.opf to get the metadata and pages
 	var pages []string
 	var metadata Metadata
-	for _, f := range zipReader.File {
-		if f.Name == volOPFPath {
-			file, err := f.Open()
-			if err != nil {
-				return fmt.Errorf("error opening vol.opf: %w", err)
-			}
-			defer file.Close()
+	opfFile, err := findAndOpenFile(zipReader, volOPFPath)
+	if err != nil {
+		return fmt.Errorf("error finding vol.opf: %w", err)
+	}
+	defer opfFile.Close()
 
-			var pkg Package
-			if err := xml.NewDecoder(file).Decode(&pkg); err != nil {
-				return fmt.Errorf("error decoding vol.opf: %w", err)
-			}
+	var pkg Package
+	if err := xml.NewDecoder(opfFile).Decode(&pkg); err != nil {
+		return fmt.Errorf("error decoding vol.opf: %w", err)
+	}
 
-			// Store the metadata for later use
-			metadata = pkg.Metadata
+	// Store the metadata for later use
+	metadata = pkg.Metadata
 
-			// Find hrefs of pages via spine
-			pageMap := make(map[string]string)
-			for _, item := range pkg.Manifest.Items {
-				pageMap[item.ID] = item.Href
-			}
+	// Find hrefs of pages via spine
+	pageMap := make(map[string]string)
+	for _, item := range pkg.Manifest.Items {
+		pageMap[item.ID] = item.Href
+	}
 
-			for _, ref := range pkg.Spine.Itemrefs {
-				href, exists := pageMap[ref.IDRef]
-				if exists {
-					// Convert relative path to absolute path based on volOPFPath
-					absPath := filepath.Join(filepath.Dir(volOPFPath), href)
-					// Normalize path separators to forward slashes for ZIP/EPUB compatibility
-					absPath = filepath.ToSlash(absPath)
-					absPath = strings.TrimPrefix(absPath, "/")
-					pages = append(pages, absPath)
-				}
-			}
-			break
+	for _, ref := range pkg.Spine.Itemrefs {
+		href, exists := pageMap[ref.IDRef]
+		if exists {
+			// Convert relative path to absolute path based on volOPFPath
+			absPath := filepath.Join(filepath.Dir(volOPFPath), href)
+			// Normalize path separators to forward slashes for ZIP/EPUB compatibility
+			absPath = filepath.ToSlash(absPath)
+			absPath = strings.TrimPrefix(absPath, "/")
+			pages = append(pages, absPath)
 		}
 	}
 
