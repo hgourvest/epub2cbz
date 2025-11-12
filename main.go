@@ -495,7 +495,7 @@ func processFile(epubPath string, outputPath string) error {
 				}
 
 				// Extract images
-				imgSrcs = extractImagesFromXHTML(string(content), pageHref, imgSrcs)
+				imgSrcs = append(imgSrcs, extractImagesFromXHTML(string(content), pageHref)...)
 
 				break
 			}
@@ -537,8 +537,10 @@ func processFile(epubPath string, outputPath string) error {
 var selfClosingScriptTag = regexp.MustCompile(`(?is)<script[^>]*\/>`)
 
 // extractImagesFromHTML extracts image paths from HTML content using XML parser
-func extractImagesFromXHTML(htmlContent string, pageHref string, srcs []string) []string {
+func extractImagesFromXHTML(htmlContent string, pageHref string) []string {
 	htmlContent = selfClosingScriptTag.ReplaceAllString(htmlContent, "")
+
+	srcs := []string{}
 
 	doc, err := html.Parse(strings.NewReader(htmlContent))
 	if err != nil {
@@ -562,6 +564,7 @@ func extractImagesFromXHTML(htmlContent string, pageHref string, srcs []string) 
 			}
 		}
 	}
+
 	return srcs
 }
 
