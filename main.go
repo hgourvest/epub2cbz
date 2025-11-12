@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"runtime/debug"
 	"strconv"
@@ -528,21 +529,28 @@ func processFile(epubPath string, outputPath string) error {
 		}
 	}
 
-	fmt.Printf("Images extracted to %s\n", outputPath)
+	fmt.Printf("%d Images extracted to %s\n", len(imgSrcs), outputPath)
 	return nil
 }
 
+// kobo injects a self-closing script tag which breaks XML parsing
+var selfClosingScriptTag = regexp.MustCompile(`(?is)<script[^>]*\/>`)
+
 // extractImagesFromHTML extracts image paths from HTML content using XML parser
 func extractImagesFromXHTML(htmlContent string, pageHref string, srcs []string) []string {
+	htmlContent = selfClosingScriptTag.ReplaceAllString(htmlContent, "")
+
 	doc, err := html.Parse(strings.NewReader(htmlContent))
 	if err != nil {
 		log.Printf("Error parsing HTML from %s: %v", pageHref, err)
 		return srcs
 	}
 
-	var f func(*html.Node)
-	f = func(n *html.Node) {
-		if n.Type == html.ElementNode && n.Data == "img" {
+	for n := range doc.Descendants() {
+		if n.Type != html.ElementNode {
+			continue
+		}
+		if n.Data == "img" {
 			for _, a := range n.Attr {
 				if a.Key == "src" {
 					imgPath := filepath.Join(filepath.Dir(pageHref), a.Val)
@@ -553,11 +561,7 @@ func extractImagesFromXHTML(htmlContent string, pageHref string, srcs []string) 
 				}
 			}
 		}
-		for c := n.FirstChild; c != nil; c = c.NextSibling {
-			f(c)
-		}
 	}
-	f(doc)
 	return srcs
 }
 
